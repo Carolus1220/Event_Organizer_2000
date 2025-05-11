@@ -313,7 +313,12 @@ def attend():
         match result:
             case None:
                 cur.execute('''SELECT con.ID FROM con ORDER BY con.ID DESC LIMIT 1''')
-                ID = cur.fetchone()[0] + 1
+                result = cur.fetchone()
+                match result:
+                    case None:
+                        ID = 1
+                    case _:
+                        ID = cur.fetchone()[0] + 1
                 data = [ID, userID, eventID]
                 cur.execute('''INSERT INTO con VALUES(?,?,?)''', data)
                 response.set_cookie('new_attendance', 'True')
@@ -337,10 +342,12 @@ def un_attend():
 
     cur.execute('''SELECT con.ID FROM con WHERE con.userID = ? AND con.eventID = ?''', data)
     conID = cur.fetchone()[0]
-    cur.execute('''DELETE FROM con WHERE con.ID = ?''', (conID,))
 
     cur.execute('''SELECT con.ID FROM con ORDER BY con.ID DESC LIMIT 1''')
     maxID = cur.fetchone()[0]
+
+    cur.execute('''DELETE FROM con WHERE con.ID = ?''', (conID,))
+
 
     while conID < maxID:
         data = [conID, conID+1]
