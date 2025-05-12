@@ -45,16 +45,19 @@ def main():
         current_date = datetime.date.today()
 
         for data in result:
+            # kikeresi az adott event dateID-jához tartozó dátumot
             cur.execute('''SELECT date.Year, date.Month, date.Day FROM date WHERE date.ID = ?''', (data[1],))
             date = cur.fetchone()
             event_date = datetime.date(date[0], date[1], date[2])
             if event_date >= current_date and len(your_events) < 3:
+                # kikeresi az adott eventID, minden hozzá tartozó adatját
                 cur.execute('''SELECT user.Username, date.Year, date.Month, date.Day, event.Name, event.Location, event.Entry_fee
                             FROM ((event
                             INNER JOIN user ON event.Creator_ID = user.ID)
                             INNER JOIN date ON event.Date_ID = date.ID)
                             WHERE event.ID = ?''', (data[0],))
                 result2 = cur.fetchone()
+                # dátummá alakítja a dátumokat
                 date = str(datetime.date(result2[1], result2[2], result2[3]))
                 data = [result2[0], date, result2[4], result2[5], result2[6], data[0]]
                 your_events.append(data)
@@ -62,6 +65,7 @@ def main():
     else:
         pass
 
+    # kikeresi az eventID-k maximumát
     cur.execute('''SELECT event.ID FROM event ORDER BY event.ID DESC LIMIT 1''')
     result = cur.fetchone()
     match result:
@@ -71,6 +75,7 @@ def main():
             maxID = int(result[0])
             eventID = 1
             current_date = datetime.date.today()
+            # 1től kezdve kikeres 6 olyan eventet melyek dátuma még nem telt el
             while (eventID <= maxID) and (len(all_events) < 6):
                 cur.execute('''SELECT event.Date_ID FROM event WHERE event.ID = ?''', (eventID,))
                 dateID = cur.fetchone()[0]
@@ -79,6 +84,7 @@ def main():
                 event_date = datetime.date(date[0], date[1], date[2])
 
                 if event_date >= current_date:
+                    # ha jó a dátum, kikeresi az event minden adatját
                     cur.execute('''SELECT user.Username, date.Year, date.Month, date.Day, event.Name, event.Location, event.Entry_fee
                                         FROM ((event
                                         INNER JOIN user ON event.Creator_ID = user.ID)
@@ -118,13 +124,16 @@ def verify_login():
 
     data = [username, password]
 
+    # kikeresi az adott nevü és jelszavú user-t
     cur.execute('''SELECT user.ID FROM user WHERE Username = ? AND Password = ?''', data)
     ID = cur.fetchone()
     match ID:
         case None:
+            # ha nincs ilyen IDjú user, errort dob
             response.set_cookie('failed_login', 'yes', max_age=10)
             redirect('/login')
         case _:
+            # ha van beállítja ID-ját és nevét sütibe
             response.set_cookie('account_ID', str(ID[0]))
             response.set_cookie('account_username', str(username))
             redirect('/')
@@ -161,20 +170,41 @@ def signup():
                         user_ID = result[0] + 1
 
                 date = str(datetime.date.today()).split('-')
+                # kikeresi a db-ből a mai nap id-jét
                 cur.execute('''SELECT date.ID FROM date WHERE Year = ? AND Month = ? AND Day = ?''', date)
                 result = cur.fetchone()
                 match result:
                     case None:
-                        cur.execute('''SELECT date.ID FROM date ORDER BY date.ID DESC LIMIT 1''')
-                        result = cur.fetchone()
+                        # ha nincs beleteszi és rendezi
+                        data = [date[0], date[0], date[1], date[0], date[1], date[2]]
+                        cur.execute('''SELECT date.ID FROM date
+                                        WHERE (Year > ?) OR (Year = ? AND Month > ?) OR (Year = ? AND Month = ? AND Day > ?)''', data)
+                        result = cur.fetchall()
+                        print(result)
                         match result:
-                            case None:
-                                date_ID = 1
+                            case []:
+                                # ha nincs nagyobb nála, az új elem a legnagyobb vagy az első elem
+                                cur.execute('''SELECT date.ID FROM date ORDER BY date.ID DESC LIMIT 1''')
+                                result = cur.fetchone()
+                                if result is None:
+                                    date_ID = 1
+                                else:
+                                    date_ID = result[0] + 1
                             case _:
-                                date_ID = result[0] + 1
+                                # ha van nála nagyobb, az utolsótól bumpolunk
+                                for ID in reversed(result):
+                                    ID = ID[0]
+                                    data = [ID+1, ID]
+                                    cur.execute('''UPDATE date SET ID = ? WHERE ID = ?''', data)
+                                    cur.execute('''UPDATE user SET Date_ID = ? WHERE Date_ID = ?''', data)
+                                    cur.execute('''UPDATE event SET Date_ID = ? WHERE Date_ID = ?''', data)
+                                date_ID = result[0][0]
+
                         data = [date_ID, date[0], date[1], date[2]]
                         cur.execute('''INSERT INTO date VALUES(?,?,?,?)''', data)
+                        con.commit()
                     case _:
+                        # ha van kiadja az ID-t
                         date_ID = result[0]
 
                 data = [user_ID, username, password, date_ID]
